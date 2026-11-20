@@ -28,6 +28,7 @@ main{max-width:560px;margin:0 auto;padding:16px 16px 40px}
 .step{color:var(--mu);font-size:13px;margin-bottom:14px}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:20px}
 h1{font-size:21px;margin:0 0 14px}
+input[type=text],textarea{text-transform:uppercase}
 input[type=text],input[type=date],textarea{width:100%;font:inherit;padding:12px;border:1px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--tx)}
 textarea{min-height:120px;resize:vertical}
 .row{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
@@ -80,14 +81,15 @@ function render(){ phase==="campos" ? rCampo() : phase==="evid" ? rEvid() : rFin
 function rCampo(){
   const c = CAMPOS[ci], v = data[c.id] || (c.type==="date" ? new Date().toISOString().slice(0,10) : "");
   progress(`Datos · ${ci+1} de ${N}`, ci/TOT*100);
-  const inp = c.type==="area" ? `<textarea id="f">${esc(v)}</textarea>`
+  const inp = c.type==="area" ? `<textarea id="f" autocapitalize="characters">${esc(v)}</textarea>`
     : c.type==="date" ? `<input id="f" type="date" value="${esc(v)}">`
-    : `<input id="f" type="text" ${c.type==="num"?'inputmode="decimal"':c.type==="money"?'inputmode="numeric" placeholder="$"':''} value="${esc(c.type==="money"?miles(v):v)}">`;
+    : `<input id="f" type="text" autocapitalize="characters" autocomplete="off" ${c.type==="num"?'inputmode="decimal"':c.type==="money"?'inputmode="numeric" placeholder="$"':''} value="${esc(c.type==="money"?miles(v):v)}">`;
   card.innerHTML = `<h1>${esc(c.label)} ${c.opt?'<span class="opt">(opcional)</span>':''}</h1>${inp}
     <div class="row">${ci>0?'<button id="bk">Atrás</button>':''}<button class="p grow" id="nx">Siguiente</button></div>`;
   const f = document.getElementById("f"); if(c.type!=="date") f.focus();
   if(c.type==="money") f.oninput = () => { f.value = miles(f.value); };
-  const val = () => c.type==="money" ? f.value.replace(/\D/g,"") : f.value.trim();
+  else if(c.type!=="date") f.addEventListener("input", () => { const p = f.selectionStart; f.value = f.value.toUpperCase(); try{ f.setSelectionRange(p,p); }catch(e){} });
+  const val = () => c.type==="money" ? f.value.replace(/\D/g,"") : c.type==="date" ? f.value.trim() : f.value.trim().toUpperCase();
   const nx = document.getElementById("nx");
   const chk = () => { nx.disabled = !c.opt && !val(); }; f.addEventListener("input", chk); chk();
   const go = () => { if(nx.disabled) return; data[c.id] = val();
@@ -145,15 +147,9 @@ function rFinal(){
   document.getElementById("pdf").onclick = exportar;
 }
 
-async function savePdf(blob, fname){
-  const file = new File([blob], fname, {type:"application/pdf"});
-  if(navigator.canShare && navigator.canShare({files:[file]})){
-    try{ await navigator.share({files:[file], title:fname}); return "shared"; }
-    catch(e){ if(e.name==="AbortError") return "cancel"; }
-  }
+function descargar(blob, fname){
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = fname;
-  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 10000);
-  return "saved";
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 15000);
 }
 
 async function exportar(){
@@ -212,8 +208,14 @@ async function exportar(){
     doc.text(AUTORIZA, (xm+x1)/2, y+RH/2+1.3, {align:"center"});
     const blob = doc.output("blob");
     const fname = `Nota_Credito_${(data.factura||"").replace(/[^\w\-]+/g,"_")}.pdf`;
-    const r = await savePdf(blob, fname);
-    ms.textContent = r==="cancel" ? "Cancelado." : "PDF listo ✔";
+    descargar(blob, fname);
+    ms.textContent = "PDF guardado en tu dispositivo (carpeta Descargas) ✔";
+    const file = new File([blob], fname, {type:"application/pdf"});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      const sb = document.createElement("button"); sb.className = "p"; sb.style.marginTop = "10px"; sb.textContent = "Compartir PDF";
+      sb.onclick = () => navigator.share({files:[file], title:fname}).catch(()=>{});
+      ms.appendChild(document.createElement("br")); ms.appendChild(sb);
+    }
   }catch(err){
     ms.textContent = "No se pudo exportar: " + (err.message||err);
   }
